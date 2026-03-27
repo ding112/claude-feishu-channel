@@ -14,6 +14,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
+import { z } from 'zod'
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { randomBytes } from 'crypto'
 import {
@@ -309,6 +310,7 @@ const mcp = new Server(
       tools: {},
       experimental: {
         'claude/channel': {},
+        'claude/channel/permission': {},
       },
     },
     instructions: [
@@ -460,6 +462,43 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 })
 
 // ---------------------------------------------------------------------------
+// Permission relay — forward tool-approval prompts to Feishu
+// ---------------------------------------------------------------------------
+
+const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
+
+mcp.setNotificationHandler(
+  z.object({
+    method: z.literal('notifications/claude/channel/permission_request'),
+    params: z.object({
+      request_id: z.string(),
+      tool_name: z.string(),
+      description: z.string(),
+      input_preview: z.string(),
+    }),
+  }),
+  async ({ params }) => {
+    const { request_id, tool_name, description } = params
+    const access = loadAccess()
+    const text =
+      `Claude wants to run ${tool_name}: ${description}\n\n` +
+      `Reply "yes ${request_id}" or "no ${request_id}"`
+    for (const senderId of access.allowFrom) {
+      void client.im.message.create({
+        params: { receive_id_type: 'open_id' },
+        data: {
+          receive_id: senderId,
+          msg_type: 'text',
+          content: JSON.stringify({ text }),
+        },
+      }).catch(err => {
+        process.stderr.write(`feishu channel: permission_request send to ${senderId} failed: ${err}\n`)
+      })
+    }
+  },
+)
+
+// ---------------------------------------------------------------------------
 // Connect MCP over stdio
 // ---------------------------------------------------------------------------
 
@@ -527,6 +566,19 @@ async function handleInbound(event: {
   // Parse message text
   const text = parseMessageText(event.message.content, event.message.message_type)
   if (!text) return
+
+  // Intercept permission relay verdicts before forwarding as chat
+  const permMatch = PERMISSION_REPLY_RE.exec(text)
+  if (permMatch) {
+    void mcp.notification({
+      method: 'notifications/claude/channel/permission',
+      params: {
+        request_id: permMatch[2]!.toLowerCase(),
+        behavior: permMatch[1]!.toLowerCase().startsWith('y') ? 'allow' : 'deny',
+      },
+    })
+    return
+  }
 
   const ts = new Date().toISOString()
   const user = senderId

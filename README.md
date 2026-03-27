@@ -1,64 +1,66 @@
-# Feishu / Lark
+# 飞书 / Lark
 
-Connect a Feishu (飞书) or Lark bot to your Claude Code session via an MCP server.
+[English](./README_EN.md)
 
-The MCP server connects to Feishu via WebSocket long-polling and provides tools to Claude for replying, reacting, and editing messages. When you message the bot, the server forwards the message to your Claude Code session.
+通过 MCP server 将飞书（Feishu）或 Lark 机器人连接到你的 Claude Code 会话。
 
-## Prerequisites
+MCP server 通过 WebSocket 长连接接入飞书，为 Claude 提供回复、表情回应和编辑消息的工具。当你给机器人发消息时，server 会将消息转发到你的 Claude Code 会话。
 
-- [Bun](https://bun.sh) — the MCP server runs on Bun. Install with `curl -fsSL https://bun.sh/install | bash`.
-- A Feishu/Lark app with bot capability enabled.
+## 前置条件
+
+- [Bun](https://bun.sh) — MCP server 基于 Bun 运行。安装命令：`curl -fsSL https://bun.sh/install | bash`。
+- 一个已启用机器人能力的飞书/Lark 应用。
 - **Claude Code v2.1.80+**，且必须通过 **claude.ai 登录**（`claude login`）。
 - **Channel 功能不支持 API key 认证**（包括 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN` 及第三方代理如 DashScope）。使用 API key 时，MCP server 能正常连接和接收消息，但 Claude Code 不会处理 `notifications/claude/channel` 通知。
 - Claude **Max** 计划，或 Team/Enterprise 计划（需管理员启用 `channelsEnabled`）。
 
-## Quick Setup
+## 快速开始
 
-**1. Create a Feishu app.**
+**1. 创建飞书应用**
 
-Go to the [Feishu Open Platform](https://open.feishu.cn) (or [Lark Developer](https://open.larksuite.com) for international):
+前往[飞书开放平台](https://open.feishu.cn)（国际版请访问 [Lark Developer](https://open.larksuite.com)）：
 
-1. Create a new app (自建应用)
-2. Enable **Bot** capability (机器人)
-3. Add permissions:
-   - `im:message` — receive messages
-   - `im:message:send_as_bot` — send messages
-   - `im:message.reactions:write` — add reactions (optional)
-4. Subscribe to events (事件与回调):
-   - Add event `im.message.receive_v1` (接收消息)
-   - Set subscription mode to **Receive events through persistent connection** (使用长连接接收事件)
-5. Publish the app version and get admin approval
-6. Copy the **App ID** (`cli_xxxx`) and **App Secret**
+1. 创建一个自建应用
+2. 启用**机器人**能力
+3. 添加权限：
+   - `im:message` — 接收消息
+   - `im:message:send_as_bot` — 以机器人身份发送消息
+   - `im:message.reactions:write` — 添加表情回应（可选）
+4. 订阅事件（事件与回调）：
+   - 添加事件 `im.message.receive_v1`（接收消息）
+   - 订阅方式选择**使用长连接接收事件**
+5. 发布应用版本并获取管理员审批
+6. 复制 **App ID**（`cli_xxxx`）和 **App Secret**
 
-**2. Install the plugin.**
+**2. 安装插件**
 
-These are Claude Code commands — run `claude` to start a session first.
+以下是 Claude Code 命令 — 先运行 `claude` 启动一个会话。
 
-Once published to the official marketplace:
+正式发布到官方市场后：
 
 ```
 /plugin install feishu@claude-plugins-official
 ```
 
-For local development, see [Local Development](#local-development) below.
+本地开发请参阅下方[本地开发](#本地开发)。
 
-**3. Save your credentials.**
+**3. 保存凭证**
 
 ```
 /feishu:setup cli_xxxx your_app_secret_here
 ```
 
-Writes `FEISHU_APP_ID` and `FEISHU_APP_SECRET` to `~/.claude/channels/feishu/.env`.
+会将 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 写入 `~/.claude/channels/feishu/.env`。
 
-For Lark (international) users, add the domain:
+Lark（国际版）用户需要指定域名：
 
 ```
 /feishu:setup cli_xxxx your_app_secret_here lark
 ```
 
-**4. Relaunch with the plugin loaded.**
+**4. 重新启动并加载插件**
 
-Exit your session and start a new one:
+退出当前会话，启动新会话：
 
 ```sh
 # 正式发布后
@@ -68,75 +70,101 @@ claude --channels plugin:feishu@claude-plugins-official
 claude --plugin-dir /path/to/claude-feishu-channel
 ```
 
-**5. Pair.**
+**5. 配对**
 
-With Claude Code running, DM your bot on Feishu — it replies with a 6-character pairing code. In your Claude Code session:
+Claude Code 运行后，在飞书上给机器人发私信 — 机器人会回复一个 6 位配对码。在 Claude Code 会话中输入：
 
 ```
 /feishu:setup pair <code>
 ```
 
-Your next DM reaches the assistant.
+之后你的私信就能直达助手了。
 
-**6. Lock it down.**
+**6. 锁定访问**
 
-Once you're paired, switch to allowlist so strangers don't get pairing-code replies:
+配对成功后，切换为白名单模式，防止陌生人获取配对码：
 
 ```
 /feishu:setup policy allowlist
 ```
 
-## Access control
+## 访问控制
 
-See **[ACCESS.md](./ACCESS.md)** for DM policies, the `access.json` schema, and all `/feishu:setup` subcommands.
+详见 **[ACCESS.md](./ACCESS.md)**，了解私信策略、`access.json` 格式以及所有 `/feishu:setup` 子命令。
 
-Quick reference: IDs are Feishu **open_id** values (like `ou_xxxx`). Default policy is `pairing`.
+快速参考：ID 为飞书 **open_id** 值（如 `ou_xxxx`）。默认策略为 `pairing`。
 
-## Tools exposed to the assistant
+## 助手可用的工具
 
-| Tool | Purpose |
+| 工具 | 用途 |
 | --- | --- |
-| `reply` | Send to a chat. Takes `chat_id` + `text`, optionally `reply_to` (message ID) for native threading. Auto-chunks long text. Returns the sent message ID(s). |
-| `react` | Add an emoji reaction to a message by ID. Uses Feishu emoji type strings like `THUMBSUP`, `SMILE`, `HEART`. |
-| `edit_message` | Edit a message the bot previously sent. Useful for "working..." -> result progress updates. |
+| `reply` | 向聊天发送消息。接收 `chat_id` + `text` 参数，可选 `reply_to`（消息 ID）用于原生话题回复。自动分段发送长文本。返回已发送的消息 ID。 |
+| `react` | 根据消息 ID 添加表情回应。使用飞书表情类型字符串，如 `THUMBSUP`、`SMILE`、`HEART`。 |
+| `edit_message` | 编辑机器人之前发送的消息。适用于"处理中..." → 结果的进度更新场景。 |
 
-## No history or search
+## 无历史记录和搜索功能
 
-Feishu's Bot API via WebSocket exposes **neither** message history nor search. The bot only sees messages as they arrive. If the assistant needs earlier context, it will ask you to paste or summarize.
+飞书 Bot API 通过 WebSocket **不提供**消息历史记录和搜索功能。机器人只能看到实时到达的消息。如果助手需要之前的上下文，会请你粘贴或概述。
 
-## Local Development
+## 本地开发
 
-### 加载本地插件
+### 准备工作
 
 ```bash
-# 1. 克隆仓库并安装依赖
+# 克隆仓库并安装依赖
 git clone https://github.com/your-org/claude-feishu-channel.git
 cd claude-feishu-channel
 bun install
 
-# 2. 手动写入凭证（首次）
+# 写入凭证（首次）
 mkdir -p ~/.claude/channels/feishu
 cat > ~/.claude/channels/feishu/.env << 'EOF'
 FEISHU_APP_ID=cli_xxxx
 FEISHU_APP_SECRET=your_app_secret_here
 EOF
 chmod 600 ~/.claude/channels/feishu/.env
+```
 
-# 3. 启动 Claude Code（--plugin-dir 加载本地插件）
+### 方式 A：--plugin-dir（推荐，完整插件功能）
+
+以插件形式加载，`/feishu:setup` skill 可用：
+
+```bash
 claude --plugin-dir /path/to/claude-feishu-channel
 ```
 
 `--plugin-dir` 支持重复使用以加载多个插件。每次启动需要带此参数。
 
-### 简化启动（shell alias）
-
-每次输入完整命令较繁琐，可以在 `~/.zshrc` 或 `~/.bashrc` 中添加 alias：
+可以在 `~/.zshrc` 或 `~/.bashrc` 中添加 alias 简化：
 
 ```bash
 alias claude-feishu='claude --plugin-dir /path/to/claude-feishu-channel'
 ```
 
-之后只需运行 `claude-feishu` 即可。
+### 方式 B：--dangerously-load-development-channels（裸 MCP server）
+
+如果不需要插件包装（skill 等功能），可以直接以 MCP server 方式加载。这是官方文档推荐的 research preview 阶段调试方式。
+
+1. 在 `~/.claude.json` 中注册 server：
+
+```json
+{
+  "mcpServers": {
+    "feishu": {
+      "command": "bun",
+      "args": ["/path/to/claude-feishu-channel/server.ts"]
+    }
+  }
+}
+```
+
+2. 启动 Claude Code：
+
+```bash
+claude --dangerously-load-development-channels server:feishu
+```
+
+> **注意**：此方式下 `/feishu:setup` skill 不可用，需手动管理凭证和 `access.json`。该标志只跳过白名单检查，组织策略 `channelsEnabled` 仍然生效。
 
 ### 配置凭证（两种方式）
 
@@ -210,11 +238,11 @@ claude login
 claude --channels plugin:feishu@claude-plugins-official
 ```
 
-## Environment variables
+## 环境变量
 
-| Variable | Description |
+| 变量 | 说明 |
 | --- | --- |
-| `FEISHU_APP_ID` | Feishu app ID (required) |
-| `FEISHU_APP_SECRET` | Feishu app secret (required) |
-| `FEISHU_DOMAIN` | `feishu` (default), `lark`, or custom URL |
-| `FEISHU_STATE_DIR` | Override state directory (default: `~/.claude/channels/feishu`) |
+| `FEISHU_APP_ID` | 飞书应用 ID（必填） |
+| `FEISHU_APP_SECRET` | 飞书应用密钥（必填） |
+| `FEISHU_DOMAIN` | `feishu`（默认）、`lark` 或自定义 URL |
+| `FEISHU_STATE_DIR` | 覆盖状态目录（默认：`~/.claude/channels/feishu`） |
